@@ -5,28 +5,39 @@ const crypto = require('crypto');
 
 const router = express.Router();
 
-// Direct MongoDB connection (no Mongoose)
+// Direct MongoDB connection (no Mongoose) - serverless optimized
 let mongoClient = null;
-let db = null;
 
 async function getMongoConnection() {
-    if (!db) {
-        const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/group-order-system';
-        mongoClient = new MongoClient(uri, {
-            serverSelectionTimeoutMS: 2000,
-            socketTimeoutMS: 5000,
-            connectTimeoutMS: 2000,
-            maxPoolSize: 1,
-            minPoolSize: 0,
-            maxIdleTimeMS: 3000,
-            retryWrites: false,
-            retryReads: false,
-            family: 4
-        });
-        await mongoClient.connect();
-        db = mongoClient.db();
+    try {
+        if (!mongoClient || mongoClient.topology?.isDestroyed()) {
+            console.log('Creating new MongoDB connection...');
+            const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/group-order-system';
+            mongoClient = new MongoClient(uri, {
+                serverSelectionTimeoutMS: 3000,
+                socketTimeoutMS: 3000,
+                connectTimeoutMS: 3000,
+                maxPoolSize: 2,
+                minPoolSize: 0,
+                maxIdleTimeMS: 10000,
+                retryWrites: false,
+                retryReads: false
+            });
+            await mongoClient.connect();
+        }
+        return mongoClient.db();
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+        if (mongoClient) {
+            try {
+                await mongoClient.close();
+            } catch (closeErr) {
+                console.error('Error closing client:', closeErr);
+            }
+            mongoClient = null;
+        }
+        throw err;
     }
-    return db;
 }
 
 // Simple password hashing (matches User model)
@@ -38,12 +49,25 @@ function hashPassword(password) {
 router.get('/login', (req, res) => {
     try {
         if (req.session && req.session.user) {
-            return res.redirect('/items');
+            return res.redirect('/login-success');
         }
         res.render('login', { error: null });
     } catch (err) {
         console.error('Login page error:', err);
-        res.render('login', { error: null });
+        res.status(200).send(`
+            <!DOCTYPE html>
+            <html>
+            <head><title>Login</title></head>
+            <body>
+                <h1>Login</h1>
+                <form method="POST" action="/login">
+                    <input type="text" name="username" placeholder="Username" required><br><br>
+                    <input type="password" name="password" placeholder="Password" required><br><br>
+                    <button type="submit">Login</button>
+                </form>
+            </body>
+            </html>
+        `);
     }
 });
 

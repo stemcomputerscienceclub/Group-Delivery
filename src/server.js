@@ -19,23 +19,37 @@ app.set('layout', 'layout');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration - minimal setup
+// Session configuration - serverless optimized
 const sessionConfig = {
     secret: process.env.SESSION_SECRET || 'your-secret-key-here',
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
-        maxAge: 24 * 60 * 60 * 1000,
+        maxAge: 60 * 60 * 1000, // 1 hour instead of 24 hours
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production'
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
     }
 };
 
-// Initialize session middleware
-app.use(session(sessionConfig));
+// Initialize session middleware with error handling
+try {
+    app.use(session(sessionConfig));
+} catch (err) {
+    console.error('Session middleware error:', err);
+}
 
-// Add user to res.locals for all views
-app.use(addUserToLocals);
+// Add user to res.locals for all views - with error handling
+app.use((req, res, next) => {
+    try {
+        addUserToLocals(req, res, next);
+    } catch (err) {
+        console.error('addUserToLocals error:', err);
+        res.locals = { user: null, error: null };
+        next();
+    }
+});
 
 // Add default layout variables
 app.use((req, res, next) => {
