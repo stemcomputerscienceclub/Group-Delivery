@@ -1,16 +1,15 @@
 require('dotenv').config();
 const express = require('express');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 
 const router = express.Router();
 
 // Direct MongoDB connection (no Mongoose)
 let mongoClient = null;
-let db = null;
 
 async function getMongoConnection() {
-    if (!db) {
+    if (!mongoClient) {
         const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/group-order-system';
         mongoClient = new MongoClient(uri, {
             serverSelectionTimeoutMS: 2000,
@@ -24,9 +23,8 @@ async function getMongoConnection() {
             family: 4
         });
         await mongoClient.connect();
-        db = mongoClient.db();
     }
-    return db;
+    return mongoClient.db();
 }
 
 // Simple password hashing (matches User model)
@@ -57,8 +55,8 @@ router.post('/login', async (req, res) => {
         }
 
         // Get direct MongoDB connection
-        const database = await getMongoConnection();
-        const usersCollection = database.collection('users');
+        const db = await getMongoConnection();
+        const usersCollection = db.collection('users');
 
         // Find user directly
         const user = await usersCollection.findOne(
@@ -139,10 +137,11 @@ router.post('/preferences/theme', async (req, res) => {
         }
 
         // Get direct MongoDB connection
-        const database = await getMongoConnection();
-        const usersCollection = database.collection('users');
+        const db = await getMongoConnection();
+        const usersCollection = db.collection('users');
 
         // Update user preferences directly
+        const { ObjectId } = require('mongodb');
         const result = await usersCollection.updateOne(
             { _id: new ObjectId(req.session.user.id) },
             { 
