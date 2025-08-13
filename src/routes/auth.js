@@ -96,7 +96,8 @@ router.post('/login', async (req, res) => {
                 console.error('Session save error:', err);
                 return res.render('login', { error: 'Error during login' });
             }
-            res.redirect('/items');
+            // Redirect to a success page instead of /items for now
+            res.redirect('/login-success');
         });
         
     } catch (err) {
@@ -183,6 +184,47 @@ router.get('/logout', (req, res) => {
         }
         res.redirect('/login');
     });
+});
+
+// Login success page
+router.get('/login-success', (req, res) => {
+    if (!req.session || !req.session.user) {
+        return res.redirect('/login');
+    }
+    
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Login Successful</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body>
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h1 class="card-title text-success">✅ Login Successful!</h1>
+                                <p class="card-text">Welcome back, <strong>${req.session.user.name}</strong>!</p>
+                                <p class="text-muted">
+                                    The application is currently undergoing database optimizations. 
+                                    Full functionality will be restored shortly.
+                                </p>
+                                <div class="mt-4">
+                                    <a href="/logout" class="btn btn-outline-secondary me-2">Logout</a>
+                                    <a href="/test" class="btn btn-primary">Server Status</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 // Close connection on exit

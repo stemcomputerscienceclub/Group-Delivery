@@ -1,16 +1,11 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const session = require('express-session');
 const expressLayouts = require('express-ejs-layouts');
 const path = require('path');
 const { addUserToLocals } = require('./middleware/auth');
 
 const app = express();
-
-// Disable Mongoose buffering globally - CRITICAL for serverless
-mongoose.set('bufferCommands', false);
-mongoose.set('bufferMaxEntries', 0);
 
 // View engine setup
 app.set('view engine', 'ejs');
@@ -51,17 +46,45 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/', require('./routes/auth'));
-app.use('/items', require('./routes/items'));
-app.use('/restaurants', require('./routes/restaurants'));
-app.use('/admin', require('./routes/admin'));
+
+// Temporary maintenance mode for other routes until database connection is stable
+app.use('/items', (req, res) => {
+    res.status(503).render('error', {
+        message: 'Service Temporarily Unavailable',
+        error: {
+            status: 503,
+            stack: 'Database connectivity issues. Please try logging in again shortly.'
+        }
+    });
+});
+
+app.use('/restaurants', (req, res) => {
+    res.status(503).render('error', {
+        message: 'Service Temporarily Unavailable', 
+        error: {
+            status: 503,
+            stack: 'Database connectivity issues. Please try logging in again shortly.'
+        }
+    });
+});
+
+app.use('/admin', (req, res) => {
+    res.status(503).render('error', {
+        message: 'Service Temporarily Unavailable',
+        error: {
+            status: 503, 
+            stack: 'Database connectivity issues. Please try logging in again shortly.'
+        }
+    });
+});
 
 // Simple test endpoint (no database required)
 app.get('/test', (req, res) => {
     res.json({ 
         status: 'Server is running',
         timestamp: new Date().toISOString(),
-        mongoState: mongoose.connection.readyState,
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        auth: 'native-driver'
     });
 });
 
@@ -69,7 +92,7 @@ app.get('/test', (req, res) => {
 app.get('/', (req, res) => {
     try {
         if (req.session && req.session.user) {
-            res.redirect('/items');
+            res.redirect('/login-success');
         } else {
             res.redirect('/login');
         }
@@ -84,7 +107,7 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(),
-        mongoState: mongoose.connection.readyState
+        auth: 'native-driver'
     });
 });
 
@@ -102,7 +125,6 @@ app.use((err, req, res, next) => {
     console.error('Error name:', err.name);
     console.error('Error message:', err.message);
     console.error('Request URL:', req.url);
-    console.error('MongoDB state:', mongoose.connection.readyState);
     console.error('===================');
     
     res.status(err.status || 500).json({
