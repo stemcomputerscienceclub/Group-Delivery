@@ -2,21 +2,22 @@
   "version": 2,
   "builds": [
     {
-      "src": "src/server-minimal.js",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 10,
-        "memory": 1024
-      }
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
       "src": "/(.*)",
-      "dest": "src/server-minimal.js",
-      "headers": {
-        "cache-control": "s-maxage=0"
-      }
+      "dest": "/public/$1"
     }
   ],
   "env": {
