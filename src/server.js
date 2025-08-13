@@ -11,45 +11,71 @@ const app = express();
 
 // Configure MongoDB connection with better error handling and timeouts
 const mongoConfig = {
-    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-    socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+    serverSelectionTimeoutMS: 3000, // Reduced for serverless
+    socketTimeoutMS: 20000, // Reduced for serverless
+    connectTimeoutMS: 3000, // Added connect timeout
     bufferMaxEntries: 0, // Disable mongoose buffering
     bufferCommands: false, // Disable mongoose buffering
-    maxPoolSize: 10, // Maintain up to 10 socket connections
-    minPoolSize: 5, // Maintain a minimum of 5 socket connections
-    maxIdleTimeMS: 30000, // Close connections after 30s of inactivity
-    family: 4 // Use IPv4, skip trying IPv6
+    maxPoolSize: 5, // Reduced pool size for serverless
+    minPoolSize: 1, // Minimal connections
+    maxIdleTimeMS: 10000, // Shorter idle time for serverless
+    family: 4, // Use IPv4, skip trying IPv6
+    retryWrites: true, // Enable retry writes
+    retryReads: true // Enable retry reads
 };
 
-// Connection retry logic
+// Connection retry logic for serverless environments
+let isConnecting = false;
+let connectionPromise = null;
+
 async function connectToMongoDB() {
-    const maxRetries = 3;
-    let retries = 0;
+    if (mongoose.connection.readyState === 1) {
+        return Promise.resolve();
+    }
     
-    while (retries < maxRetries) {
-        try {
-            console.log(`Connecting to MongoDB... (attempt ${retries + 1}/${maxRetries})`);
-            await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/group-order-system', mongoConfig);
-            console.log('Connected to MongoDB successfully');
-            console.log('Legacy server listening...');
-            return;
-        } catch (err) {
-            retries++;
-            console.error(`MongoDB connection attempt ${retries} failed:`, err.message);
-            
-            if (retries < maxRetries) {
-                console.log(`Retrying in 2 seconds...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-            } else {
-                console.error('All MongoDB connection attempts failed. Exiting...');
-                process.exit(1);
+    if (isConnecting && connectionPromise) {
+        return connectionPromise;
+    }
+    
+    isConnecting = true;
+    connectionPromise = new Promise(async (resolve, reject) => {
+        const maxRetries = 2; // Reduced for serverless
+        let retries = 0;
+        
+        while (retries < maxRetries) {
+            try {
+                console.log(`Connecting to MongoDB... (attempt ${retries + 1}/${maxRetries})`);
+                await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/group-order-system', mongoConfig);
+                console.log('Connected to MongoDB successfully');
+                console.log('Legacy server listening...');
+                isConnecting = false;
+                resolve();
+                return;
+            } catch (err) {
+                retries++;
+                console.error(`MongoDB connection attempt ${retries} failed:`, err.message);
+                
+                if (retries < maxRetries) {
+                    console.log(`Retrying in 1 second...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } else {
+                    console.error('All MongoDB connection attempts failed.');
+                    isConnecting = false;
+                    reject(err);
+                    return;
+                }
             }
         }
-    }
+    });
+    
+    return connectionPromise;
 }
 
-// Start MongoDB connection
-connectToMongoDB();
+// Initialize MongoDB connection (non-blocking)
+connectToMongoDB().catch(err => {
+    console.error('Initial MongoDB connection failed:', err.message);
+    // Don't exit in serverless environments - let requests handle reconnection
+});
 
 // Handle MongoDB connection events
 mongoose.connection.on('error', (err) => {
@@ -105,6 +131,23 @@ app.use(session(sessionConfig));
 // Add user to res.locals for all views
 app.use(addUserToLocals);
 
+// Database connection middleware (only for routes that need it)
+const ensureDbConnection = async (req, res, next) => {
+    try {
+        if (mongoose.connection.readyState !== 1) {
+            console.log('Database not connected, attempting to connect...');
+            await connectToMongoDB();
+        }
+        next();
+    } catch (err) {
+        console.error('Database connection middleware error:', err);
+        res.status(503).render('error', {
+            message: 'Database connection error. Please try again.',
+            error: process.env.NODE_ENV === 'development' ? err : {}
+        });
+    }
+};
+
 // Add default layout variables
 app.use((req, res, next) => {
     // Set default layout variables
@@ -113,17 +156,33 @@ app.use((req, res, next) => {
     next();
 });
 
-// Routes
-app.use('/', require('./routes/auth'));
-app.use('/items', require('./routes/items'));
-app.use('/restaurants', require('./routes/restaurants'));
-app.use('/admin', require('./routes/admin'));
+// Routes - auth routes handle their own database connection as needed
+const authRouter = require('./routes/auth');
+app.use('/', authRouter);
+app.use('/items', ensureDbConnection, require('./routes/items'));
+app.use('/restaurants', ensureDbConnection, require('./routes/restaurants'));
+app.use('/admin', ensureDbConnection, require('./routes/admin'));
+
+// Simple test endpoint (no database required)
+app.get('/test', (req, res) => {
+    res.json({ 
+        status: 'Server is running',
+        timestamp: new Date().toISOString(),
+        mongoState: mongoose.connection.readyState,
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
 
 // Root redirect
 app.get('/', (req, res) => {
-    if (req.session.user) {
-        res.redirect('/items');
-    } else {
+    try {
+        if (req.session && req.session.user) {
+            res.redirect('/items');
+        } else {
+            res.redirect('/login');
+        }
+    } catch (err) {
+        console.error('Root route error:', err);
         res.redirect('/login');
     }
 });
@@ -131,6 +190,11 @@ app.get('/', (req, res) => {
 // Health check endpoint
 app.get('/health', async (req, res) => {
     try {
+        // Ensure connection is established
+        if (mongoose.connection.readyState !== 1) {
+            await connectToMongoDB();
+        }
+        
         // Check database connectivity
         const dbState = mongoose.connection.readyState;
         const states = {
@@ -176,10 +240,21 @@ app.use((req, res) => {
 
 // Error handler
 app.use((err, req, res, next) => {
-    console.error('Error:', err);
+    console.error('=== ERROR HANDLER ===');
+    console.error('Error name:', err.name);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    console.error('Request URL:', req.url);
+    console.error('Request method:', req.method);
+    console.error('MongoDB connection state:', mongoose.connection.readyState);
+    console.error('===================');
+    
+    // Don't expose detailed errors in production
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    
     res.status(err.status || 500).render('error', {
         message: err.message || 'Something went wrong',
-        error: process.env.NODE_ENV === 'development' ? err : {}
+        error: isDevelopment ? err : { status: err.status || 500 }
     });
 });
 
@@ -189,3 +264,6 @@ const server = app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
     console.log(`Health check available at http://localhost:${port}/health`);
 });
+
+// Export app for serverless environments (Vercel)
+module.exports = app;

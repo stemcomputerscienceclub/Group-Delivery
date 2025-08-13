@@ -1,18 +1,34 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
+const mongoose = require('mongoose');
+
+// Database connection helper
+const ensureConnection = async () => {
+    if (mongoose.connection.readyState !== 1) {
+        throw new Error('Database not connected');
+    }
+};
 
 // Login page
 router.get('/login', (req, res) => {
-    if (req.session.user) {
-        return res.redirect('/items');
+    try {
+        if (req.session && req.session.user) {
+            return res.redirect('/items');
+        }
+        res.render('login', { error: null });
+    } catch (err) {
+        console.error('Login page error:', err);
+        res.render('login', { error: null });
     }
-    res.render('login', { error: null });
 });
 
 // Login process
 router.post('/login', async (req, res) => {
     try {
+        // Ensure database connection
+        await ensureConnection();
+        
         const { username, password } = req.body;
         
         if (!username || !password) {
@@ -56,7 +72,11 @@ router.post('/login', async (req, res) => {
     } catch (err) {
         console.error('❌ Login error:', err);
         
-        // Handle specific MongoDB timeout errors
+        // Handle specific error types
+        if (err.message === 'Database not connected') {
+            return res.render('login', { error: 'Service temporarily unavailable. Please try again.' });
+        }
+        
         if (err.name === 'MongooseError' && err.message.includes('buffering timed out')) {
             return res.render('login', { error: 'Database connection timeout. Please try again.' });
         }
@@ -74,6 +94,9 @@ router.post('/login', async (req, res) => {
 // Update theme preference
 router.post('/preferences/theme', async (req, res) => {
     try {
+        // Ensure database connection
+        await ensureConnection();
+        
         if (!req.session.user) {
             return res.status(401).json({ error: 'Authentication required' });
         }
@@ -106,7 +129,11 @@ router.post('/preferences/theme', async (req, res) => {
     } catch (err) {
         console.error('Theme update error:', err);
         
-        // Handle specific MongoDB timeout errors
+        // Handle specific error types
+        if (err.message === 'Database not connected') {
+            return res.status(503).json({ error: 'Service temporarily unavailable. Please try again.' });
+        }
+        
         if (err.name === 'MongooseError' && err.message.includes('buffering timed out')) {
             return res.status(500).json({ error: 'Database connection timeout. Please try again.' });
         }
