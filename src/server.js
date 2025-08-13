@@ -82,6 +82,7 @@ app.use('/admin', (req, res) => {
 app.get('/test', (req, res) => {
     res.json({ 
         status: 'Server is running',
+        version: 'v2.0-native-driver',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || 'development',
         auth: 'native-driver'

@@ -49,6 +49,8 @@ router.get('/login', (req, res) => {
 
 // Login process using native MongoDB driver
 router.post('/login', async (req, res) => {
+    console.log('🚀 Using NATIVE MongoDB driver for login - v2.0');
+    
     try {
         const { username, password } = req.body;
         
