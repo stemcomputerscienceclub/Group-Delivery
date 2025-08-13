@@ -2,29 +2,20 @@
   "version": 2,
   "builds": [
     {
-      "src": "src/server.js",
+      "src": "src/server-minimal.js",
       "use": "@vercel/node",
       "config": {
         "maxDuration": 10,
-        "memory": 1024,
-        "includeFiles": [
-          "src/views/**",
-          "src/models/**",
-          "src/routes/**",
-          "src/middleware/**",
-          "src/scripts/**",
-          "src/utils/**"
-        ]
+        "memory": 1024
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "src/server.js",
+      "dest": "src/server-minimal.js",
       "headers": {
-        "cache-control": "s-maxage=0",
-        "Set-Cookie": "session=; Path=/; HttpOnly; SameSite=Lax"
+        "cache-control": "s-maxage=0"
       }
     }
   ],
