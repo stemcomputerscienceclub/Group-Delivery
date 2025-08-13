@@ -15,8 +15,12 @@ router.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
-        // Find user
-        const user = await User.findOne({ username });
+        if (!username || !password) {
+            return res.render('login', { error: 'Username and password are required' });
+        }
+
+        // Find user with timeout handling
+        const user = await User.findOne({ username }).timeout(10000); // 10 second timeout
         
         if (!user) {
             return res.render('login', { error: 'Invalid credentials' });
@@ -51,7 +55,17 @@ router.post('/login', async (req, res) => {
         
     } catch (err) {
         console.error('❌ Login error:', err);
-        res.render('login', { error: 'An error occurred during login' });
+        
+        // Handle specific MongoDB timeout errors
+        if (err.name === 'MongooseError' && err.message.includes('buffering timed out')) {
+            return res.render('login', { error: 'Database connection timeout. Please try again.' });
+        }
+        
+        if (err.name === 'MongoTimeoutError' || err.message.includes('timeout')) {
+            return res.render('login', { error: 'Database timeout. Please try again.' });
+        }
+        
+        res.render('login', { error: 'An error occurred during login. Please try again.' });
     }
 });
 
@@ -69,8 +83,8 @@ router.post('/preferences/theme', async (req, res) => {
             return res.status(400).json({ error: 'Invalid theme' });
         }
 
-        // Update user preferences
-        const user = await User.findById(req.session.user.id);
+        // Update user preferences with timeout
+        const user = await User.findById(req.session.user.id).timeout(10000);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -91,7 +105,17 @@ router.post('/preferences/theme', async (req, res) => {
         });
     } catch (err) {
         console.error('Theme update error:', err);
-        res.status(500).json({ error: 'An error occurred' });
+        
+        // Handle specific MongoDB timeout errors
+        if (err.name === 'MongooseError' && err.message.includes('buffering timed out')) {
+            return res.status(500).json({ error: 'Database connection timeout. Please try again.' });
+        }
+        
+        if (err.name === 'MongoTimeoutError' || err.message.includes('timeout')) {
+            return res.status(500).json({ error: 'Database timeout. Please try again.' });
+        }
+        
+        res.status(500).json({ error: 'An error occurred while updating theme' });
     }
 });
 
