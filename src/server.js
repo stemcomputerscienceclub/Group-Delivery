@@ -7,13 +7,18 @@ const { addUserToLocals } = require('./middleware/auth');
 
 const app = express();
 
-// View engine setup
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
-// Express layouts setup
-app.use(expressLayouts);
-app.set('layout', 'layout');
+// View engine setup - with error handling for serverless
+try {
+    app.set('view engine', 'ejs');
+    app.set('views', path.join(__dirname, 'views'));
+    
+    // Express layouts setup
+    app.use(expressLayouts);
+    app.set('layout', 'layout');
+} catch (err) {
+    console.error('View engine setup error:', err);
+    // Continue without view engine if it fails
+}
 
 // Body parsing middleware
 app.use(express.json());
@@ -140,12 +145,24 @@ app.use((err, req, res, next) => {
     console.error('Error name:', err.name);
     console.error('Error message:', err.message);
     console.error('Request URL:', req.url);
+    console.error('Stack:', err.stack);
     console.error('===================');
     
     res.status(err.status || 500).json({
         error: 'Internal server error',
         status: err.status || 500
     });
+});
+
+// Global error handlers to prevent crashes
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    // Don't exit in serverless environment
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit in serverless environment
 });
 
 // For local development

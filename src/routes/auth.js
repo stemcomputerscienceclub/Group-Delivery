@@ -51,35 +51,64 @@ router.get('/login', (req, res) => {
         if (req.session && req.session.user) {
             return res.redirect('/login-success');
         }
-        res.render('login', { error: null });
+        return renderLoginError(res, null);
     } catch (err) {
         console.error('Login page error:', err);
-        res.status(200).send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Login</title></head>
-            <body>
-                <h1>Login</h1>
-                <form method="POST" action="/login">
-                    <input type="text" name="username" placeholder="Username" required><br><br>
-                    <input type="password" name="password" placeholder="Password" required><br><br>
-                    <button type="submit">Login</button>
-                </form>
-            </body>
-            </html>
-        `);
+        return renderLoginError(res, null);
     }
 });
 
+// Helper function to render login with error
+function renderLoginError(res, errorMessage) {
+    return res.status(200).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Login - OCT Delivery System</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        </head>
+        <body>
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="mb-0">Login</h3>
+                            </div>
+                            <div class="card-body">
+                                ${errorMessage ? `<div class="alert alert-danger">${errorMessage}</div>` : ''}
+                                <form method="POST" action="/login">
+                                    <div class="mb-3">
+                                        <label for="username" class="form-label">Username</label>
+                                        <input type="text" class="form-control" id="username" name="username" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="password" class="form-label">Password</label>
+                                        <input type="password" class="form-control" id="password" name="password" required>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary w-100">Login</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
 // Login process using native MongoDB driver
 router.post('/login', async (req, res) => {
-    console.log('🚀 Using NATIVE MongoDB driver for login - v2.0');
+    console.log('🚀 Using NATIVE MongoDB driver for login - v3.0 serverless-safe');
     
     try {
         const { username, password } = req.body;
         
         if (!username || !password) {
-            return res.render('login', { error: 'Username and password are required' });
+            return renderLoginError(res, 'Username and password are required');
         }
 
         // Get direct MongoDB connection
@@ -96,18 +125,18 @@ router.post('/login', async (req, res) => {
         );
         
         if (!user) {
-            return res.render('login', { error: 'Invalid credentials' });
+            return renderLoginError(res, 'Invalid credentials');
         }
 
         // Verify password
         const hashedPassword = hashPassword(password);
         if (user.password !== hashedPassword) {
-            return res.render('login', { error: 'Invalid credentials' });
+            return renderLoginError(res, 'Invalid credentials');
         }
 
         // Set session data
         req.session.user = {
-            id: user._id,
+            id: user._id.toString(),
             username: user.username,
             name: user.name,
             phoneNumber: user.phoneNumber,
@@ -120,25 +149,26 @@ router.post('/login', async (req, res) => {
         req.session.save((err) => {
             if (err) {
                 console.error('Session save error:', err);
-                return res.render('login', { error: 'Error during login' });
+                return renderLoginError(res, 'Error during login');
             }
-            // Redirect to a success page instead of /items for now
+            // Redirect to a success page
             res.redirect('/login-success');
         });
         
     } catch (err) {
         console.error('❌ Login error:', err);
+        console.error('Stack:', err.stack);
         
-        // Handle different error types
+        // Handle different error types with safe rendering
         if (err.name === 'MongoTimeoutError' || err.message.includes('timeout')) {
-            return res.render('login', { error: 'Connection timeout. Please try again.' });
+            return renderLoginError(res, 'Connection timeout. Please try again.');
         }
         
         if (err.name === 'MongoServerSelectionError') {
-            return res.render('login', { error: 'Database unavailable. Please try again.' });
+            return renderLoginError(res, 'Database unavailable. Please try again.');
         }
         
-        res.render('login', { error: 'Service temporarily unavailable. Please try again.' });
+        return renderLoginError(res, 'Service temporarily unavailable. Please try again.');
     }
 });
 
