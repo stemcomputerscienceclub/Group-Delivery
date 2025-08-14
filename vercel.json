@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "oct-delivery-serverless",
+  "name": "oct-delivery-pure-serverless",
   "builds": [
     {
       "src": "api/**/*.js",
@@ -24,8 +24,12 @@
       "dest": "/public/index.html"
     },
     {
-      "src": "/(.*)",
+      "src": "/(.*\\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot))",
       "dest": "/public/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/index.html"
     }
   ],
   "functions": {
@@ -36,5 +40,7 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "framework": null,
+  "buildCommand": null
 }
