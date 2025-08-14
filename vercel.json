@@ -32,11 +32,6 @@
       "dest": "/public/index.html"
     }
   ],
-  "functions": {
-    "api/**/*.js": {
-      "maxDuration": 10
-    }
-  },
   "env": {
     "NODE_ENV": "production"
   },
